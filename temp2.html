@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Barcode Scanner</title>
-  <script src="https://unpkg.com/quagga/dist/quagga.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -443,9 +443,21 @@
       }
     });
 
+    // Check if Quagga is loaded and start scanner
+    function initializeApp() {
+      if (typeof Quagga === 'undefined') {
+        updateStatus('❌ Barcode scanner library failed to load. Please refresh the page.');
+        console.error('Quagga library not loaded');
+        return;
+      }
+      
+      setTimeout(startScanner, 500);
+    }
+
     // Start scanner when page loads
     document.addEventListener('DOMContentLoaded', () => {
-      setTimeout(startScanner, 500);
+      // Give the script time to load
+      setTimeout(initializeApp, 1000);
     });
   </script>
 </body>
