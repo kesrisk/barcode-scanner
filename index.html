@@ -1,16 +1,31 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Barcode Scanner</title>
+  <title>Barcode Price Scanner</title>
   <script src="https://unpkg.com/quagga/dist/quagga.min.js"></script>
   <style>
-    #camera { width: 400px; height: 300px; border: 1px solid #ccc; }
+    #camera {
+      width: 400px;
+      height: 300px;
+      border: 1px solid #ccc;
+      margin-bottom: 10px;
+    }
+    #result {
+      font-size: 1.2em;
+      margin-bottom: 15px;
+    }
+    button {
+      padding: 8px 16px;
+      font-size: 1em;
+    }
   </style>
 </head>
 <body>
-  <h2>Barcode Scanner</h2>
+  <h2>Scan a Product Barcode</h2>
   <div id="camera"></div>
   <div id="result"></div>
+  <button id="restartButton" style="display:none;">Scan Again</button>
+
   <script>
     const products = [
       { barcode: "123456", name: "Headphones", price: 100, gst: 18 },
@@ -19,23 +34,29 @@
 
     function showResult(barcode) {
       const product = products.find(p => p.barcode === barcode);
+      const resultDiv = document.getElementById("result");
+      const restartBtn = document.getElementById("restartButton");
       if (product) {
         const gstAmount = (product.price * product.gst) / 100;
         const total = product.price + gstAmount;
-        document.getElementById("result").innerHTML =
-          `<b>Product:</b> ${product.name}<br>
-           <b>Price:</b> ₹${product.price}<br>
-           <b>GST (${product.gst}%):</b> ₹${gstAmount}<br>
-           <b>Total:</b> ₹${total}`;
+        resultDiv.innerHTML =
+          `<b>Product:</b> ${product.name}<br>` +
+          `<b>Price:</b> ₹${product.price}<br>` +
+          `<b>GST (${product.gst}%):</b> ₹${gstAmount}<br>` +
+          `<b>Total:</b> ₹${total}`;
       } else {
-        document.getElementById("result").innerHTML = "Product not found.";
+        resultDiv.innerHTML = "Product not found.";
       }
+      restartBtn.style.display = "inline-block";
     }
 
-    document.addEventListener("DOMContentLoaded", function() {
+    function startScanner() {
+      document.getElementById("result").innerHTML = "";
+      document.getElementById("restartButton").style.display = "none";
+
       Quagga.init({
         inputStream: {
-          type : "LiveStream",
+          type: "LiveStream",
           target: document.querySelector('#camera'),
           constraints: {
             width: 400,
@@ -48,18 +69,25 @@
         }
       }, function(err) {
           if (err) {
-              console.log(err);
-              return;
+            console.log(err);
+            return;
           }
           Quagga.start();
       });
+    }
+
+    document.addEventListener("DOMContentLoaded", function() {
+      startScanner();
 
       Quagga.onDetected(function(result) {
         if (result && result.codeResult && result.codeResult.code) {
           Quagga.stop();
           showResult(result.codeResult.code);
-          setTimeout(() => { Quagga.start(); }, 3000);
         }
+      });
+
+      document.getElementById("restartButton").addEventListener("click", function() {
+        startScanner();
       });
     });
   </script>
