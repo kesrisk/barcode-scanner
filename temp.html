@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Barcode Scanner</title>
+  <script src="https://unpkg.com/quagga/dist/quagga.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f4f6f8;
+      color: #333;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    h2 {
+      margin-bottom: 16px;
+    }
+
+    #camera {
+      width: 100%;
+      max-width: 400px;
+      height: 56vw; /* Maintain 16:9 aspect ratio */
+      max-height: 300px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      background-color: black;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      margin-bottom: 24px;
+      position: relative;
+    }
+
+    #result {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+      padding: 20px;
+      width: 100%;
+      max-width: 400px;
+      min-height: 100px;
+      font-size: 1.15em;
+      color: #222;
+      text-align: left;
+      line-height: 1.4;
+      margin-bottom: 20px;
+    }
+
+    #result span.not-found {
+      color: #bb2d3b;
+      font-weight: 600;
+    }
+
+    button {
+      background-color: #007bff;
+      border: none;
+      color: white;
+      padding: 12px 28px;
+      font-size: 1em;
+      border-radius: 6px;
+      cursor: pointer;
+      box-shadow: 0 3px 8px rgba(0,123,255,0.4);
+      transition: background-color 0.3s ease;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    button:focus {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(0,123,255,0.7);
+    }
+
+  </style>
+</head>
+<body>
+  <h2>Barcode Scanner</h2>
+
+  <div id="camera"></div>
+  <div id="result">Waiting for scan...</div>
+  <button id="restartButton" style="display:none;">Scan Again</button>
+
+  <script>
+    const products = [
+      { barcode: "123456", name: "Headphones", price: 100, gst: 18 },
+      { barcode: "654321", name: "Speaker", price: 200, gst: 12 }
+    ];
+
+    const resultDiv = document.getElementById('result');
+    const restartBtn = document.getElementById('restartButton');
+
+    function showResult(barcode) {
+      const product = products.find(p => p.barcode === barcode);
+      if (product) {
+        const gstAmount = (product.price * product.gst) / 100;
+        const total = product.price + gstAmount;
+        resultDiv.innerHTML = `
+          <b>Product:</b> ${product.name} <br/>
+          <b>Price:</b> ₹${product.price.toFixed(2)} <br/>
+          <b>GST (${product.gst}%):</b> ₹${gstAmount.toFixed(2)} <br/>
+          <b>Total:</b> ₹${total.toFixed(2)}
+        `;
+      } else {
+        resultDiv.innerHTML = `<span class="not-found">Product not found for barcode: ${barcode}</span>`;
+      }
+
+      restartBtn.style.display = 'inline-block';
+    }
+
+    function startScanner() {
+      resultDiv.textContent = "Waiting for scan...";
+      restartBtn.style.display = "none";
+
+      Quagga.init({
+        inputStream: {
+          name: "Live",
+          type: "LiveStream",
+          target: document.querySelector('#camera'),
+          constraints: {
+            width: { min: 320, ideal: 640, max: 1280 },
+            height: { min: 240, ideal: 480, max: 720 },
+            facingMode: "environment"
+          },
+        },
+        decoder: {
+          readers: ["code_128_reader", "ean_reader", "ean_8_reader", "upc_reader"]
+        },
+        locate: true,
+      }, function(err) {
+        if (err) {
+          console.error(err);
+          resultDiv.innerHTML = "<span class='not-found'>Error initializing camera or permission denied.</span>";
+          return;
+        }
+        Quagga.start();
+      });
+
+      Quagga.onDetected(onDetectedHandler);
+    }
+
+    function onDetectedHandler(result) {
+      if (result && result.codeResult && result.codeResult.code) {
+        Quagga.offDetected(onDetectedHandler);
+        Quagga.stop();
+        showResult(result.codeResult.code);
+      }
+    }
+
+    restartBtn.addEventListener('click', () => {
+      Quagga.offDetected(onDetectedHandler);
+      startScanner();
+    });
+
+    document.addEventListener('DOMContentLoaded', startScanner);
+  </script>
+</body>
+</html>
