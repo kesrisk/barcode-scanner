@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Barcode Scanner</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.0/axios.min.js"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -287,8 +287,7 @@
   </div>
 
   <script>
-    // ⚠️ IMPORTANT: Replace these with your actual Supabase credentials
-    // These are SAFE to expose publicly when using Row Level Security
+    // Your Supabase credentials
     const SUPABASE_URL = 'https://ctragfbikxwnisbovtbn.supabase.co'
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN0cmFnZmJpa3h3bmlzYm92dGJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYwMjM2NDYsImV4cCI6MjA3MTU5OTY0Nn0.GCts5ZGb6yTaxKLhnmboB3uCAD-8Bn9FawqApp-_-pg'
     
@@ -309,36 +308,139 @@
     // Initialize Supabase
     function initSupabase() {
       try {
-        supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        console.log('Supabase initialized successfully');
+        // Check multiple possible locations for supabase
+        const supabaseLib = window.supabase || window.Supabase || (window.supabaseJs && window.supabaseJs.supabase);
+        
+        if (!supabaseLib || !supabaseLib.createClient) {
+          console.error('Supabase library not found. Available:', Object.keys(window).filter(k => k.toLowerCase().includes('supa')));
+          updateStatus('❌ Database library not loaded properly');
+          return false;
+        }
+        
+        supabase = supabaseLib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        console.log('Supabase client created successfully:', supabase);
         return true;
       } catch (error) {
         console.error('Failed to initialize Supabase:', error);
-        updateStatus('❌ Database connection failed');
+        updateStatus(`❌ Database initialization failed: ${error.message}`);
         return false;
       }
     }
 
-    // Fetch product from Supabase
+    // Test database connection
+    async function testConnection() {
+      try {
+        updateStatus('🔍 Testing database connection...', true);
+        
+        // Simple connection test
+        const { data, error } = await supabase
+          .from('articles')
+          .select('art_id')
+          .limit(1);
+
+        if (error) {
+          console.error('Connection test failed:', error);
+          updateStatus(`❌ Database error: ${error.message}`);
+          
+          // Check if it's a table not found error
+          if (error.message.includes('relation "articles" does not exist')) {
+            updateStatus('❌ Table "articles" not found. Please run the SQL setup.');
+          }
+          return false;
+        }
+
+        updateStatus('✅ Database connected successfully!');
+        console.log('Connection test passed. Sample data:', data);
+        return true;
+      } catch (error) {
+        console.error('Connection test error:', error);
+        updateStatus(`❌ Connection failed: ${error.message}`);
+        return false;
+      }
+    }
+
+    // Supabase REST API implementation (no SDK needed)
     async function fetchProductData(artId) {
       try {
         updateStatus('🔍 Looking up product...', true);
         
-        const { data, error } = await supabase
-          .from('articles')
-          .select('*')
-          .eq('art_id', artId)
-          .single();
+        const url = `${SUPABASE_URL}/rest/v1/articles?art_id=eq.${artId}&select=*`;
+        
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal'
+          }
+        });
 
-        if (error) {
-          console.error('Supabase error:', error);
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('API Error:', response.status, errorText);
+          
+          if (response.status === 404) {
+            updateStatus('❌ Database table not found');
+          } else if (response.status === 401) {
+            updateStatus('❌ Database authentication failed');
+          } else {
+            updateStatus(`❌ Database error: ${response.status}`);
+          }
           return null;
         }
 
-        return data;
+        const data = await response.json();
+        console.log('API Response:', data);
+        
+        return data && data.length > 0 ? data[0] : null;
+        
       } catch (error) {
         console.error('Fetch error:', error);
+        updateStatus('❌ Network error - check internet connection');
         return null;
+      }
+    }
+
+    // Test database connection using direct REST API
+    async function testConnection() {
+      try {
+        updateStatus('🔍 Testing database connection...', true);
+        
+        const url = `${SUPABASE_URL}/rest/v1/articles?select=art_id&limit=1`;
+        
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Connection test failed:', response.status, errorText);
+          
+          if (response.status === 404) {
+            updateStatus('❌ Table "articles" not found. Please run the SQL setup.');
+          } else if (response.status === 401 || response.status === 403) {
+            updateStatus('❌ Database authentication failed. Check your credentials.');
+          } else {
+            updateStatus(`❌ Database error: ${response.status} - ${errorText}`);
+          }
+          return false;
+        }
+
+        const data = await response.json();
+        updateStatus('✅ Database connected successfully!');
+        console.log('Connection test passed. Sample data:', data);
+        return true;
+        
+      } catch (error) {
+        console.error('Connection test error:', error);
+        updateStatus(`❌ Connection failed: ${error.message}`);
+        return false;
       }
     }
 
@@ -505,32 +607,28 @@
     });
 
     // Initialize app
-    function initializeApp() {
-      updateStatus('Connecting to database...', true);
+    async function initializeApp() {
+      updateStatus('Loading scanner...', true);
+      
+      // Wait a bit for Quagga to load
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Check if required libraries are loaded
       if (typeof Quagga === 'undefined') {
         updateStatus('❌ Camera scanner library failed to load. Please refresh.');
+        console.error('Quagga not loaded');
         return;
       }
       
-      if (typeof supabase === 'undefined') {
-        updateStatus('❌ Database library failed to load. Please refresh.');
-        return;
-      }
-
-      // Check if Supabase credentials are configured
-      if (SUPABASE_URL === 'https://your-project.supabase.co' || SUPABASE_ANON_KEY === 'your-anon-key-here') {
-        updateStatus('⚙️ Please configure Supabase credentials in the code');
+      updateStatus('📡 Testing database connection...', true);
+      
+      // Test connection using REST API (no Supabase SDK needed)
+      const connected = await testConnection();
+      if (!connected) {
         return;
       }
       
-      // Initialize Supabase
-      if (!initSupabase()) {
-        return;
-      }
-      
-      updateStatus('✅ Database connected. Starting camera...');
+      updateStatus('🎉 Ready! Starting camera...');
       setTimeout(startScanner, 500);
     }
 
