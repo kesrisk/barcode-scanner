@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Barcode Price Lookup with Camera</title>
+  <script src="https://unpkg.com/quagga/dist/quagga.min.js"></script>
+</head>
+<body>
+  <h2>Scan a product barcode</h2>
+  <div id="camera" style="width: 400px; height: 300px;"></div>
+  <div id="result"></div>
+  <script>
+    // Sample product data
+    const products = [
+      { barcode: "123456", name: "Headphones", price: 100, gst: 18 },
+      { barcode: "654321", name: "Speaker", price: 200, gst: 12 }
+    ];
+
+    function showResult(barcode) {
+      const product = products.find(p => p.barcode === barcode);
+      if (product) {
+        const gstAmount = (product.price * product.gst) / 100;
+        const total = product.price + gstAmount;
+        document.getElementById("result").innerHTML =
+          `<b>Product:</b> ${product.name}<br>
+           <b>Price:</b> ₹${product.price}<br>
+           <b>GST (${product.gst}%):</b> ₹${gstAmount}<br>
+           <b>Total:</b> ₹${total}`;
+      } else {
+        document.getElementById("result").innerHTML = "Product not found.";
+      }
+    }
+
+    Quagga.init({
+      inputStream : {
+        name : "Live",
+        type : "LiveStream",
+        target: document.querySelector('#camera'),
+        constraints: {
+          facingMode: "environment" // Use back camera on mobile devices
+        }
+      },
+      decoder : {
+        readers : ["code_128_reader", "ean_reader", "ean_8_reader", "upc_reader"]
+      }
+    }, function(err) {
+        if (err) {
+            console.log(err);
+            return;
+        }
+        Quagga.start();
+    });
+
+    Quagga.onDetected(function(result) {
+      if (result && result.codeResult && result.codeResult.code) {
+        Quagga.stop();
+        showResult(result.codeResult.code);
+        // Optionally restart scanning after a delay:
+        setTimeout(() => { Quagga.start(); }, 3000);
+      }
+    });
+  </script>
+</body>
+</html>
