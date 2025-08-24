@@ -1,66 +1,686 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Barcode Scanner</title>
-  <script src="https://unpkg.com/quagga/dist/quagga.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.0/axios.min.js"></script>
   <style>
-    #camera { width: 400px; height: 300px; border: 1px solid #ccc; }
-  </style>
-</head>
-<body>
-  <h2>Barcode Scanner</h2>
-  <div id="camera"></div>
-  <div id="result"></div>
-  <script>
-    const products = [
-      { barcode: "123456", name: "Headphones", price: 100, gst: 18 },
-      { barcode: "654321", name: "Speaker", price: 200, gst: 12 }
-    ];
+    * {
+      box-sizing: border-box;
+    }
 
-    function showResult(barcode) {
-      const product = products.find(p => p.barcode === barcode);
-      if (product) {
-        const gstAmount = (product.price * product.gst) / 100;
-        const total = product.price + gstAmount;
-        document.getElementById("result").innerHTML =
-          `<b>Product:</b> ${product.name}<br>
-           <b>Price:</b> ₹${product.price}<br>
-           <b>GST (${product.gst}%):</b> ₹${gstAmount}<br>
-           <b>Total:</b> ₹${total}`;
-      } else {
-        document.getElementById("result").innerHTML = "Product not found.";
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 16px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #333;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 450px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      text-align: center;
+      color: white;
+      margin-bottom: 24px;
+      font-size: clamp(1.5rem, 4vw, 2.2rem);
+      text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+
+    #camera {
+      width: 100%;
+      aspect-ratio: 4/3;
+      border: 3px solid rgba(255,255,255,0.3);
+      border-radius: 16px;
+      background-color: #000;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      margin-bottom: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #status {
+      background: rgba(255,255,255,0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+      font-size: 1.1em;
+      color: #555;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    }
+
+    /* Popup Overlay */
+    .popup-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.6);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      backdrop-filter: blur(4px);
+    }
+
+    .popup-overlay.show {
+      display: flex;
+    }
+
+    /* Popup Content */
+    .popup {
+      background: white;
+      border-radius: 20px;
+      padding: 32px 24px;
+      width: 90%;
+      max-width: 400px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      transform: scale(0.7);
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      text-align: center;
+      position: relative;
+    }
+
+    .popup-overlay.show .popup {
+      transform: scale(1);
+      opacity: 1;
+    }
+
+    .popup-icon {
+      width: 60px;
+      height: 60px;
+      margin: 0 auto 20px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+    }
+
+    .popup-icon.success {
+      background: linear-gradient(135deg, #00b09b, #96c93d);
+      color: white;
+    }
+
+    .popup-icon.error {
+      background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+      color: white;
+    }
+
+    .popup-icon.loading {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+    }
+
+    .popup h3 {
+      margin: 0 0 16px 0;
+      font-size: 1.4em;
+      color: #333;
+    }
+
+    .product-details {
+      text-align: left;
+      background: #f8f9fa;
+      padding: 16px;
+      border-radius: 12px;
+      margin: 16px 0;
+    }
+
+    .product-details div {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 0.95em;
+    }
+
+    .product-details div:last-child {
+      margin-bottom: 0;
+      font-weight: 600;
+      font-size: 1.1em;
+      border-top: 2px solid #dee2e6;
+      padding-top: 8px;
+      margin-top: 12px;
+    }
+
+    .product-details .label {
+      color: #666;
+    }
+
+    .product-details .value {
+      font-weight: 600;
+      color: #333;
+    }
+
+    .error-message {
+      color: #dc3545;
+      margin: 16px 0;
+      font-weight: 500;
+    }
+
+    .popup-buttons {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    button {
+      flex: 1;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      border: none;
+      color: white;
+      padding: 14px 20px;
+      font-size: 1em;
+      font-weight: 600;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    button.secondary {
+      background: #6c757d;
+      box-shadow: 0 4px 15px rgba(108, 117, 125, 0.4);
+    }
+
+    button.secondary:hover {
+      background: #545b62;
+      box-shadow: 0 8px 25px rgba(108, 117, 125, 0.6);
+    }
+
+    /* Loading animation */
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(255,255,255,.3);
+      border-radius: 50%;
+      border-top-color: #667eea;
+      animation: spin 1s ease-in-out infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 30px;
+      height: 30px;
+      border: 3px solid rgba(102, 126, 234, 0.3);
+      border-radius: 50%;
+      border-top-color: #667eea;
+      animation: spin 1s ease-in-out infinite;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 480px) {
+      body {
+        padding: 12px;
+      }
+      
+      .popup {
+        padding: 24px 20px;
+        margin: 20px;
+      }
+      
+      .popup-buttons {
+        flex-direction: column;
+      }
+      
+      h1 {
+        margin-bottom: 16px;
       }
     }
 
-    document.addEventListener("DOMContentLoaded", function() {
+    @media (max-height: 600px) {
+      body {
+        justify-content: flex-start;
+        padding-top: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📱 Barcode Scanner</h1>
+    <div id="camera"></div>
+    <div id="status">
+      <div class="loading"></div>
+      Initializing...
+    </div>
+  </div>
+
+  <!-- Popup Overlay -->
+  <div class="popup-overlay" id="popupOverlay">
+    <div class="popup" id="popup">
+      <div class="popup-icon" id="popupIcon">📦</div>
+      <h3 id="popupTitle">Product Found!</h3>
+      <div id="popupContent"></div>
+      <div class="popup-buttons">
+        <button id="scanAgainBtn">🔄 Scan Again</button>
+        <button id="closeBtn" class="secondary">✕ Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Your Supabase credentials
+    const SUPABASE_URL = 'https://ctragfbikxwnisbovtbn.supabase.co'
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN0cmFnZmJpa3h3bmlzYm92dGJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYwMjM2NDYsImV4cCI6MjA3MTU5OTY0Nn0.GCts5ZGb6yTaxKLhnmboB3uCAD-8Bn9FawqApp-_-pg'
+    
+    // Initialize Supabase client
+    let supabase = null;
+    
+    const statusDiv = document.getElementById('status');
+    const popupOverlay = document.getElementById('popupOverlay');
+    const popup = document.getElementById('popup');
+    const popupIcon = document.getElementById('popupIcon');
+    const popupTitle = document.getElementById('popupTitle');
+    const popupContent = document.getElementById('popupContent');
+    const scanAgainBtn = document.getElementById('scanAgainBtn');
+    const closeBtn = document.getElementById('closeBtn');
+
+    let isScanning = false;
+
+    // Initialize Supabase
+    function initSupabase() {
+      try {
+        // Check multiple possible locations for supabase
+        const supabaseLib = window.supabase || window.Supabase || (window.supabaseJs && window.supabaseJs.supabase);
+        
+        if (!supabaseLib || !supabaseLib.createClient) {
+          console.error('Supabase library not found. Available:', Object.keys(window).filter(k => k.toLowerCase().includes('supa')));
+          updateStatus('❌ Database library not loaded properly');
+          return false;
+        }
+        
+        supabase = supabaseLib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        console.log('Supabase client created successfully:', supabase);
+        return true;
+      } catch (error) {
+        console.error('Failed to initialize Supabase:', error);
+        updateStatus(`❌ Database initialization failed: ${error.message}`);
+        return false;
+      }
+    }
+
+    // Test database connection
+    async function testConnection() {
+      try {
+        updateStatus('🔍 Testing database connection...', true);
+        
+        // Simple connection test
+        const { data, error } = await supabase
+          .from('articles')
+          .select('art_id')
+          .limit(1);
+
+        if (error) {
+          console.error('Connection test failed:', error);
+          updateStatus(`❌ Database error: ${error.message}`);
+          
+          // Check if it's a table not found error
+          if (error.message.includes('relation "articles" does not exist')) {
+            updateStatus('❌ Table "articles" not found. Please run the SQL setup.');
+          }
+          return false;
+        }
+
+        updateStatus('✅ Database connected successfully!');
+        console.log('Connection test passed. Sample data:', data);
+        return true;
+      } catch (error) {
+        console.error('Connection test error:', error);
+        updateStatus(`❌ Connection failed: ${error.message}`);
+        return false;
+      }
+    }
+
+    // Update article as scanned
+    async function markArticleAsScanned(artId) {
+      try {
+        const url = `${SUPABASE_URL}/rest/v1/articles?art_id=eq.${artId}`;
+        
+        const response = await fetch(url, {
+          method: 'PATCH',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal'
+          },
+          body: JSON.stringify({
+            scanned: true,
+            scanned_at: new Date().toISOString()
+          })
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Update Error:', response.status, errorText);
+          return false;
+        }
+
+        console.log(`✅ Article ${artId} marked as scanned`);
+        return true;
+        
+      } catch (error) {
+        console.error('Update error:', error);
+        return false;
+      }
+    }
+
+    // Supabase REST API implementation (no SDK needed)
+    async function fetchProductData(artId) {
+      try {
+        updateStatus('🔍 Looking up product...', true);
+        
+        const url = `${SUPABASE_URL}/rest/v1/articles?art_id=eq.${artId}&select=*`;
+        
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal'
+          }
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('API Error:', response.status, errorText);
+          
+          if (response.status === 404) {
+            updateStatus('❌ Database table not found');
+          } else if (response.status === 401) {
+            updateStatus('❌ Database authentication failed');
+          } else {
+            updateStatus(`❌ Database error: ${response.status}`);
+          }
+          return null;
+        }
+
+        const data = await response.json();
+        console.log('API Response:', data);
+        
+        const product = data && data.length > 0 ? data[0] : null;
+        
+        // If product found, mark it as scanned
+        if (product) {
+          console.log('📝 Marking article as scanned...');
+          await markArticleAsScanned(artId);
+        }
+        
+        return product;
+        
+      } catch (error) {
+        console.error('Fetch error:', error);
+        updateStatus('❌ Network error - check internet connection');
+        return null;
+      }
+    }
+
+    // Test database connection using direct REST API
+    async function testConnection() {
+      try {
+        updateStatus('🔍 Testing database connection...', true);
+        
+        const url = `${SUPABASE_URL}/rest/v1/articles?select=art_id&limit=1`;
+        
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Connection test failed:', response.status, errorText);
+          
+          if (response.status === 404) {
+            updateStatus('❌ Table "articles" not found. Please run the SQL setup.');
+          } else if (response.status === 401 || response.status === 403) {
+            updateStatus('❌ Database authentication failed. Check your credentials.');
+          } else {
+            updateStatus(`❌ Database error: ${response.status} - ${errorText}`);
+          }
+          return false;
+        }
+
+        const data = await response.json();
+        updateStatus('✅ Database connected successfully!');
+        console.log('Connection test passed. Sample data:', data);
+        return true;
+        
+      } catch (error) {
+        console.error('Connection test error:', error);
+        updateStatus(`❌ Connection failed: ${error.message}`);
+        return false;
+      }
+    }
+
+    async function showPopup(barcode) {
+      // Show loading popup first
+      popupIcon.innerHTML = '<div class="spinner"></div>';
+      popupIcon.className = 'popup-icon loading';
+      popupTitle.textContent = 'Looking up product...';
+      popupContent.innerHTML = '<p>Searching database...</p>';
+      popupOverlay.classList.add('show');
+
+      // Fetch product data
+      const product = await fetchProductData(barcode);
+      
+      if (product) {
+        const gstAmount = (product.price * product.gst) / 100;
+        const total = product.price + gstAmount;
+        
+        popupIcon.textContent = '✅';
+        popupIcon.className = 'popup-icon success';
+        popupTitle.textContent = 'Product Found!';
+        
+        popupContent.innerHTML = `
+          <div class="product-details">
+            <div>
+              <span class="label">Article ID:</span>
+              <span class="value">${product.art_id}</span>
+            </div>
+            <div>
+              <span class="label">Base Price:</span>
+              <span class="value">₹${product.price.toFixed(2)}</span>
+            </div>
+            <div>
+              <span class="label">GST (${product.gst}%):</span>
+              <span class="value">₹${gstAmount.toFixed(2)}</span>
+            </div>
+            <div>
+              <span class="label">Total Price:</span>
+              <span class="value">₹${total.toFixed(2)}</span>
+            </div>
+            <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid #dee2e6;">
+              <span class="label">Status:</span>
+              <span class="value" style="color: #28a745;">✅ Scanned & Updated</span>
+            </div>
+          </div>
+        `;
+      } else {
+        popupIcon.textContent = '❌';
+        popupIcon.className = 'popup-icon error';
+        popupTitle.textContent = 'Product Not Found';
+        
+        popupContent.innerHTML = `
+          <div class="error-message">
+            No product found for Article ID: <strong>${barcode}</strong>
+            <br><br>
+            <small>Make sure the product exists in the database.</small>
+          </div>
+        `;
+      }
+    }
+
+    function hidePopup() {
+      popupOverlay.classList.remove('show');
+    }
+
+    function updateStatus(message, isLoading = false) {
+      if (isLoading) {
+        statusDiv.innerHTML = `<div class="loading"></div> ${message}`;
+      } else {
+        statusDiv.innerHTML = message;
+      }
+    }
+
+    function startScanner() {
+      if (isScanning) return;
+      
+      isScanning = true;
+      updateStatus('Initializing camera...', true);
+      hidePopup();
+
       Quagga.init({
         inputStream: {
-          type : "LiveStream",
+          name: "Live",
+          type: "LiveStream",
           target: document.querySelector('#camera'),
           constraints: {
-            width: 400,
-            height: 300,
+            width: { min: 320, ideal: 640, max: 1280 },
+            height: { min: 240, ideal: 480, max: 720 },
             facingMode: "environment"
-          }
+          },
         },
         decoder: {
-          readers: ["code_128_reader", "ean_reader", "ean_8_reader", "upc_reader"]
+          readers: ["code_128_reader", "ean_reader", "ean_8_reader", "upc_reader", "code_39_reader"]
+        },
+        locate: true,
+        locator: {
+          halfSample: true,
+          patchSize: "medium"
         }
       }, function(err) {
-          if (err) {
-              console.log(err);
-              return;
-          }
-          Quagga.start();
+        if (err) {
+          console.error('Scanner initialization error:', err);
+          updateStatus('❌ Camera access denied or not available');
+          isScanning = false;
+          return;
+        }
+        
+        Quagga.start();
+        updateStatus('📷 Point camera at barcode to scan');
       });
 
-      Quagga.onDetected(function(result) {
-        if (result && result.codeResult && result.codeResult.code) {
-          Quagga.stop();
-          showResult(result.codeResult.code);
-          setTimeout(() => { Quagga.start(); }, 3000);
-        }
-      });
+      Quagga.onDetected(onDetectedHandler);
+    }
+
+    function stopScanner() {
+      if (!isScanning) return;
+      
+      Quagga.offDetected(onDetectedHandler);
+      Quagga.stop();
+      isScanning = false;
+    }
+
+    function onDetectedHandler(result) {
+      if (result && result.codeResult && result.codeResult.code) {
+        const barcode = result.codeResult.code;
+        console.log('Detected barcode:', barcode);
+        
+        stopScanner();
+        updateStatus('✅ Barcode detected!');
+        
+        // Small delay for better UX
+        setTimeout(() => {
+          showPopup(barcode);
+        }, 300);
+      }
+    }
+
+    // Event listeners
+    scanAgainBtn.addEventListener('click', () => {
+      startScanner();
+    });
+
+    closeBtn.addEventListener('click', () => {
+      hidePopup();
+      updateStatus('📷 Ready to scan - Point camera at barcode');
+    });
+
+    // Close popup on overlay click
+    popupOverlay.addEventListener('click', (e) => {
+      if (e.target === popupOverlay) {
+        hidePopup();
+        updateStatus('📷 Ready to scan - Point camera at barcode');
+      }
+    });
+
+    // Handle page visibility changes
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && isScanning) {
+        stopScanner();
+      }
+    });
+
+    // Handle page unload
+    window.addEventListener('beforeunload', () => {
+      if (isScanning) {
+        stopScanner();
+      }
+    });
+
+    // Initialize app
+    async function initializeApp() {
+      updateStatus('Loading scanner...', true);
+      
+      // Wait a bit for Quagga to load
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Check if required libraries are loaded
+      if (typeof Quagga === 'undefined') {
+        updateStatus('❌ Camera scanner library failed to load. Please refresh.');
+        console.error('Quagga not loaded');
+        return;
+      }
+      
+      updateStatus('📡 Testing database connection...', true);
+      
+      // Test connection using REST API (no Supabase SDK needed)
+      const connected = await testConnection();
+      if (!connected) {
+        return;
+      }
+      
+      updateStatus('🎉 Ready! Starting camera...');
+      setTimeout(startScanner, 500);
+    }
+
+    // Start app when page loads
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(initializeApp, 1000);
     });
   </script>
 </body>
